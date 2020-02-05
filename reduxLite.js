@@ -26,34 +26,75 @@ const createStore = (...args) => new Store (...args);
 
 const combineReducers = config => {
   return (prevState, action, subscriptions) => {
-    const nextState = {};
-    let stateChanged = false; 
-    
-    Object.keys(config).forEach(k => {
-      if (!action) {
-        var args = [, { type: '__initialize' }];
-        nextState[k] = config[k](...args);
-      } else {
-        nextState[k] = config[k](prevState[k], action);
 
-        if (nextState[k] != prevState[k]) { 
-          triggerCallBacks(subscriptions, nextState)
-        }
+    const stateManager = new StateManager(config, action, prevState)
+    stateManager.handleAction(action);
 
-      }
-    });
-    
-    return nextState;
+    if (stateManager.isStateChanged()) { 
+      return stateManager.callSubscriptionsAndReturnState(subscriptions)
+    }
+    return stateManager.getPreviousState();
   }
 }
 
 
-function triggerCallBacks(subscriptions, nextState) {
-  subscriptions.forEach(cb => cb(nextState));
+class StateManager { 
+  constructor(config = {}, action = {}, prevState = {})  {
+    this.config = config;
+    this.reducers = Object.keys(config); 
+    this.action = action; 
+    this.prevState = prevState;
+    this.stateChanged = false;  
+    this.nextState = {};
+  }
+
+  handleAction(action) { 
+    this.getReducers().forEach(key => {
+      if (!action) {
+        this.noAction(key)
+      } else {
+        this.withAction(key)
+      }
+    });
+  }
+
+  getReducers() { 
+    return this.reducers;
+  }
+
+  isStateChanged() { 
+    return this.stateChanged;
+  }
+
+  noAction(key) { 
+    var args = [, { type: '__initialize' }];
+    this.nextState[key] = this.config[key](...args);
+    this.stateChanged = true;
+  }
+
+  withAction(key) { 
+    let next = this.config[key](this.prevState[key], this.action);
+
+    if (next !== this.prevState[key]) { this.stateChanged = true; }
+    this.nextState[key] = next;
+  }
+  
+  getPreviousState() { 
+    return this.prevState; 
+  }
+
+  getNextState() { 
+    return this.nextState;
+  }
+
+  callSubscriptionsAndReturnState(subscriptions) {
+    if (subscriptions) {
+      subscriptions.forEach(cb => cb(this.nextState));
+    }
+    return this.nextState;
+  }
+
 }
-
-
-
 
 
 
@@ -89,7 +130,7 @@ const rootReducer = combineReducers({
 
 const store = new Store(rootReducer);
 
-store.getState() // => { number: 0 }
+console.log(store.getState()) // => { number: 0 }
 
 const announceStateChange = nextState => {
   console.log(`That action changed the state! Number is now ${nextState.number}`);
